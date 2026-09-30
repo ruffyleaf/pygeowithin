@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>pygeowithin — find map points inside a polygon</title>
+<meta name="description" content="A practical guide to pygeowithin: load map points into MongoDB and query every point that falls inside a polygon, then plot the result as GeoJSON." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+<style>
+  :root{
+    --accent:#2563eb;
+    --accent-soft:rgba(37,99,235,.08);
+    --text:#1f2430;
+    --muted:#5b6472;
+    --bg:#ffffff;
+    --panel:#f7f8fa;
+    --border:#e6e8ec;
+    --radius:10px;
+    --maxw:760px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:var(--text);background:var(--bg);
+    font-size:18px;line-height:1.7;-webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent);text-decoration:none;}
+  a:hover{text-decoration:underline;}
+
+  header.topbar{position:sticky;top:0;z-index:50;backdrop-filter:saturate(180%) blur(10px);background:rgba(255,255,255,.82);border-bottom:1px solid var(--border);}
+  .topbar-inner{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--text);}
+  .brand:hover{text-decoration:none;}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);display:inline-block;}
+  .topbar nav a{margin-left:20px;color:var(--muted);font-weight:500;font-size:15px;}
+  .topbar nav a:hover{color:var(--text);text-decoration:none;}
+
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px;}
+  .layout{display:grid;grid-template-columns:230px 1fr;gap:48px;align-items:start;}
+  aside.toc{position:sticky;top:78px;padding:36px 0;font-size:14px;max-height:calc(100vh - 78px);overflow:auto;}
+  aside.toc .toc-title{text-transform:uppercase;letter-spacing:.08em;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;}
+  aside.toc ol{list-style:none;margin:0;padding:0;}
+  aside.toc li{margin:2px 0;}
+  aside.toc a{display:block;padding:5px 12px;border-left:2px solid transparent;color:var(--muted);line-height:1.35;}
+  aside.toc a:hover{color:var(--text);text-decoration:none;background:var(--panel);}
+  aside.toc a.active{color:var(--accent);border-left-color:var(--accent);font-weight:600;background:var(--accent-soft);}
+
+  main{padding:48px 0 96px;min-width:0;}
+  .content{max-width:var(--maxw);}
+
+  .hero{padding:8px 0 32px;}
+  .hero h1{font-size:40px;line-height:1.12;margin:0 0 14px;font-weight:700;letter-spacing:-.02em;}
+  .hero p.lead{font-size:20px;color:var(--muted);margin:0 0 26px;max-width:640px;}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;}
+  .badge{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--panel);}
+  .badge b{color:var(--text);font-weight:600;}
+
+  h2{font-size:26px;margin:56px 0 6px;font-weight:600;letter-spacing:-.01em;scroll-margin-top:90px;}
+  h2 .num{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:10px;font-weight:600;}
+  h3{font-size:19px;margin:32px 0 6px;font-weight:600;}
+  p{margin:14px 0;}
+  ul{margin:14px 0;padding-left:22px;}
+  li{margin:6px 0;}
+  .section-desc{color:var(--muted);margin-top:2px;}
+
+  code:not([class*="language-"]){background:var(--panel);border:1px solid var(--border);padding:.08em .4em;border-radius:5px;font-size:.86em;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;color:#b43;white-space:nowrap;}
+
+  div.code-block{position:relative;margin:20px 0;}
+  pre[class*="language-"]{border-radius:var(--radius);font-size:14.5px;line-height:1.6;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;border:1px solid #2a2f3a;margin:0;}
+  .copy-btn{position:absolute;top:10px;right:10px;z-index:2;font-size:12px;font-weight:500;font-family:inherit;color:#c9d1e0;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:6px;padding:4px 10px;cursor:pointer;transition:.15s;}
+  .copy-btn:hover{background:rgba(255,255,255,.18);color:#fff;}
+  .copy-btn.done{color:#7ee2a8;border-color:rgba(126,226,168,.4);}
+
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;padding:14px 18px;margin:22px 0;font-size:16px;color:#233;}
+  .callout strong{color:var(--accent);}
+  .callout.warn{border-left-color:#d97706;background:rgba(217,119,6,.09);}
+  .callout.warn strong{color:#b45309;}
+
+  table{width:100%;border-collapse:collapse;margin:22px 0;font-size:15.5px;}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+  th{font-weight:600;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.04em;}
+  td code{white-space:nowrap;}
+  tbody tr:hover{background:var(--panel);}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0;}
+  .card{border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;background:var(--panel);}
+  .card h4{margin:0 0 4px;font-size:15px;}
+  .card p{margin:0;font-size:14.5px;color:var(--muted);line-height:1.5;}
+  .card code{white-space:normal;}
+
+  footer{border-top:1px solid var(--border);margin-top:64px;padding:36px 0;color:var(--muted);font-size:15px;}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;gap:0;}
+    aside.toc{display:none;}
+    .grid{grid-template-columns:1fr;}
+    body{font-size:17px;}
+    .hero h1{font-size:32px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="./"><span class="dot"></span> pygeowithin</a>
+    <nav>
+      <a href="#guide">Guide</a>
+      <a href="#gotchas">Gotchas</a>
+      <a href="https://github.com/ruffyleaf/pygeowithin">Repository</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="layout">
+    <aside class="toc" id="toc">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#what">What it does</a></li>
+        <li><a href="#prereq">Prerequisites</a></li>
+        <li><a href="#data">How points are stored</a></li>
+        <li><a href="#load">Loading points into Mongo</a></li>
+        <li><a href="#area">Defining your area</a></li>
+        <li><a href="#grid">Query by lat/lon corners</a></li>
+        <li><a href="#polygon">Query by GeoJSON polygon</a></li>
+        <li><a href="#output">Output &amp; plotting</a></li>
+        <li><a href="#example">Worked example</a></li>
+        <li><a href="#gotchas">Gotchas</a></li>
+        <li><a href="#layout">Repo layout</a></li>
+      </ol>
+    </aside>
+
+    <main>
+      <div class="content">
+
+        <section class="hero" id="top">
+          <h1>pygeowithin</h1>
+          <p class="lead">Draw a polygon over a map and get back every point that falls inside it. A small Python&nbsp;+&nbsp;MongoDB geospatial toolkit: load your points once, then query them by an area and export the matches as GeoJSON to plot.</p>
+          <div class="badges">
+            <span class="badge"><b>Python 2</b> scripts</span>
+            <span class="badge"><b>MongoDB</b> 2dsphere</span>
+            <span class="badge"><b>GeoJSON</b> in / out</span>
+            <span class="badge"><a href="https://github.com/ruffyleaf/pygeowithin">github.com/ruffyleaf/pygeowithin</a></span>
+          </div>
+        </section>
+
+        <h2 id="what"><span class="num">01</span>What it does</h2>
+        <p><code>pygeowithin</code> answers one question: <em>“which of my points are inside this shape?”</em> It leans on MongoDB's geospatial index to do the heavy lifting, so the workflow has two phases:</p>
+        <ul>
+          <li><strong>Load</strong> your set of points into a MongoDB collection with a <code>2dsphere</code> index (once).</li>
+          <li><strong>Query</strong> by a polygon — supplied either as a list of lat/lon corners or as a GeoJSON polygon — and receive a GeoJSON <code>FeatureCollection</code> of every point inside it.</li>
+        </ul>
+        <p>The output drops straight into <a href="https://geojson.io">geojson.io</a> (or any map tool) so you can see the matched points in context.</p>
+        <div class="callout"><strong>Why Mongo?</strong> A <code>$geoWithin</code> query against a <code>2dsphere</code> index is a true geodesic “point-in-polygon” test — it understands that the Earth is curved and handles large areas correctly, instead of you computing it row-by-row in Python.</div>
+
+        <h2 id="prereq"><span class="num">02</span>Prerequisites</h2>
+        <p>You'll need MongoDB running locally, the Python driver, and a Python&nbsp;2 interpreter (the scripts use Python&nbsp;2 syntax — see <a href="#gotchas">Gotchas</a>).</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-bash"># Install the MongoDB Python driver (Python 2)
+pip install pymongo
+
+# Make sure a local MongoDB server is reachable at mongodb://localhost
+mongod            # start it (or: brew services start mongodb-community)
+
+# Create the database/collection with a geospatial index (in the mongo shell)
+mongo
+&gt; use grid
+&gt; db.points.createIndex({ "loc": "2dsphere" })</code></pre></div>
+        <p>The index on <code>loc</code> is what makes the <code>$geoWithin</code> query work — create it before running any query script. The scripts always talk to database <code>grid</code>, collection <code>points</code>.</p>
+
+        <h2 id="data"><span class="num">03</span>How points are stored</h2>
+        <p>Each document in <code>grid.points</code> looks like this — a GeoJSON <code>Point</code> in <code>loc</code>, plus display properties carried into the output:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-json">{
+    "code": "1",
+    "title": "S1.107",
+    "loc": { "type": "Point", "coordinates": [103.6086259, 1.408475502] },
+    "description": "grid",
+    "marker-color": "#000000",
+    "marker-symbol": "circle"
+}</code></pre></div>
+        <div class="callout warn"><strong>Coordinate order:</strong> MongoDB stores <code>[longitude, latitude]</code> — lon first. This is the reverse of how most people write a location, and it's the single most common source of “my query returns nothing” bugs. Keep it in mind everywhere in this project.</div>
+
+        <h2 id="load"><span class="num">04</span>Loading points into Mongo</h2>
+        <p class="section-desc"><code>uploadtoMongo.py</code> reads a CSV of points and inserts them as documents. The expected CSV columns are <code>code, title, lat, lon, …</code>.</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-bash"># speedcam_map.csv is hardcoded as the source file inside the script
+python uploadtoMongo.py</code></pre></div>
+        <p>For each row it maps the leading <code>code</code> to a description and a map marker style, then stores the location (flipping to <code>[lon, lat]</code>) in <code>loc</code>:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-python">for row in geodata:
+    code  = row[0]
+    title = row[1]
+    lat   = float(row[2])
+    lon   = float(row[3])
+
+    if   row[0] == '1': description, markercolor, markersymbol = "grid",         '#000000', 'circle'
+    elif row[0] == '2': description, markercolor, markersymbol = "accident",     '#ee2a2a', 'danger'
+    elif row[0] == '3': description, markercolor, markersymbol = 'lamp post',    '#ffe800', 'marker-stroked'
+    elif row[0] == '4': description, markercolor, markersymbol = 'traffic light','#009647', 'car'
+    elif row[0] == '5': description, markercolor, markersymbol = 'road hump',    '#808080', 'roadblock'
+    else:               description, markercolor, markersymbol = 'N/A',          '#ffffff', 'theatre'
+
+    points.insert({
+        'code': code,
+        'title': title,
+        'loc': {'type': 'Point', 'coordinates': [lon, lat]},   # lon, lat!
+        'description': description,
+        'marker-color': markercolor,
+        'marker-symbol': markersymbol,
+    })</code></pre></div>
+        <p>Change <code>speedcam_map.csv</code> (and the code→style mapping) to match your own dataset. The header line is skipped with <code>geodata.next()</code>.</p>
+
+        <h2 id="area"><span class="num">05</span>Defining your area</h2>
+        <p>There are two ways to describe the polygon you want to query, and a matching script for each:</p>
+        <div class="grid">
+          <div class="card"><h4>A · Lat/lon corners</h4><p>A simple CSV listing the polygon's corners (one <code>lat, lon</code> per line, like <code>coord.in</code>). Run with <code>getPointsInGrid.py</code>.</p></div>
+          <div class="card"><h4>B · GeoJSON polygon</h4><p>A <code>.geojson</code> file containing a Polygon — typically drawn and exported from geojson.io. Faster to set up. Run with <code>getPointsInPolygon.py</code>.</p></div>
+        </div>
+        <p>The query itself is identical in both scripts; only how the polygon is assembled differs.</p>
+
+        <h2 id="grid"><span class="num">06</span>Query by lat/lon corners</h2>
+        <p class="section-desc"><code>getPointsInGrid.py &lt;infile&gt; &lt;outfile&gt;</code></p>
+        <p>The input file is plain <code>lat, lon</code> pairs — for example the shipped <code>coord.in</code>, a rectangle over central Singapore:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-none">1.314250, 103.800871
+1.312684, 103.806256
+1.307578, 103.806321
+1.307685, 103.801214</code></pre></div>
+        <p>Run it:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-bash">python getPointsInGrid.py coord.in outfile.geojson</code></pre></div>
+        <p>Under the hood the script flips each <code>lat, lon</code> row to <code>[lon, lat]</code>, appends the first corner to <em>close</em> the ring, then runs the geospatial query:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-python">coordinates = []
+for c in coords:                       # each row: "lat, lon"
+    x = [float(c[1]), float(c[0])]     # store as [lon, lat]
+    coordinates.append(x)
+
+coordinates.append(coordinates[0])     # close the polygon ring
+
+results = points.find({
+    "loc": {
+        "$geoWithin": {
+            "$geometry": {
+                "type": "Polygon",
+                "coordinates": [coordinates]
+            }
+        }
+    }
+})</code></pre></div>
+        <p>It prints the assembled <code>[lon,lat]</code> corners to the console first, so you can sanity-check the shape before trusting the results.</p>
+
+        <h2 id="polygon"><span class="num">07</span>Query by GeoJSON polygon</h2>
+        <p class="section-desc"><code>getPointsInPolygon.py &lt;infile.geojson&gt; &lt;outfile.geojson&gt;</code></p>
+        <p>If you already have a polygon as GeoJSON — for instance drawn on <a href="https://geojson.io">geojson.io</a> and saved — this is the faster route because there's no corner list to type out. The input is a <code>FeatureCollection</code> whose first feature is a Polygon:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-json">{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [103.800871, 1.314250],
+                    [103.806256, 1.312684],
+                    [103.806321, 1.307578],
+                    [103.801214, 1.307685],
+                    [103.800871, 1.314250]
+                ]]
+            },
+            "properties": {}
+        }
+    ]
+}</code></pre></div>
+        <p>Run it:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-bash">python getPointsInPolygon.py area.geojson outfile.geojson</code></pre></div>
+        <p>The script lifts the polygon straight out of the first feature and feeds it to the same <code>$geoWithin</code> query:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-python">polygon = json.load(open(infile, 'rb'))
+
+results = points.find({
+    "loc": {
+        "$geoWithin": {
+            "$geometry": {
+                "type":        polygon['features'][0]['geometry']['type'],
+                "coordinates": polygon['features'][0]['geometry']['coordinates']
+            }
+        }
+    }
+})</code></pre></div>
+        <p>Note it only ever reads <code>features[0]</code>, so keep the polygon you care about as the first feature in the file.</p>
+
+        <h2 id="output"><span class="num">08</span>Output &amp; plotting</h2>
+        <p>Both scripts convert the matched documents into a GeoJSON <code>FeatureCollection</code> and write it to your <code>outfile</code>:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-python">gj = {"type": "FeatureCollection", "features": []}
+for r in results:
+    gj["features"].append({
+        "type": "Feature",
+        "geometry": r['loc'],
+        "properties": {
+            "title": r['title'],
+            "description": r['description'],
+            "marker-color": r['marker-color'],
+            "marker-symbol": r['marker-symbol']
+        }
+    })
+
+open(outfile, "wb").write(json.dumps(gj, sort_keys=True, indent=4, separators=(',', ': ')))</code></pre></div>
+        <p>A single output feature looks like this (this is the shape you'll see in the sample <code>grid.geojson</code>):</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-json">{
+    "geometry": { "coordinates": ["103.6086259", "1.408475502"], "type": "Point" },
+    "properties": { "description": "grid", "marker-color": "#000000", "title": "S1.107" },
+    "type": "Feature"
+}</code></pre></div>
+        <p>Open <a href="https://geojson.io">geojson.io</a>, use <em>Open file → GeoJSON</em>, and your matched points appear on the map with the stored colors and marker symbols.</p>
+
+        <h2 id="example"><span class="num">09</span>Worked example</h2>
+        <p>Putting it together with the files in the repo:</p>
+        <div class="code-block"><button class="copy-btn">Copy</button><pre><code class="language-bash"># 1. Load points (one-time), then index them
+python uploadtoMongo.py
+mongo --eval 'db.getSiblingDB("grid").points.createIndex({loc:"2dsphere"})'
+
+# 2. Find every point inside the rectangle described by coord.in
+python getPointsInGrid.py coord.in outfile.geojson
+
+# 3. Inspect the result
+open https://geojson.io   # then Open file → outfile.geojson</code></pre></div>
+        <ol>
+          <li>Confirm the console line <code>Check the coordinates [lon,lat] :</code> shows the corners you expect.</li>
+          <li>The more features in your collection, the more <code>$geoWithin</code> saves you versus scanning rows in Python — the index does the work.</li>
+        </ol>
+
+        <h2 id="gotchas"><span class="num">10</span>Gotchas &amp; notes</h2>
+        <ul>
+          <li><strong>Python 2.</strong> <code>getPointsInGrid.py</code> uses a <code>print</code> statement and <code>uploadtoMongo.py</code> uses <code>geodata.next()</code>; open files in <code>'rb'</code>. On Python&nbsp;3 these raise. A quick port: <code>print(...)</code>, <code>next(geodata)</code>, and open in text mode. The logic itself is unchanged.</li>
+          <li><strong>Index first.</strong> No <code>2dsphere</code> index on <code>loc</code> → the <code>$geoWithin</code> query returns nothing or errors.</li>
+          <li><strong>Lon, lat — always.</strong> Input CSV is <code>lat, lon</code>; storage and GeoJSON are <code>lon, lat</code>. The scripts convert, but hand-editing coordinates is where things go wrong.</li>
+          <li><strong>Close the ring.</strong> For the corner file the script auto-appends the first point; a GeoJSON Polygon you supply must already be closed (first coordinate = last).</li>
+          <li><strong>Only the first feature</strong> of the input GeoJSON polygon is used.</li>
+          <li><strong>Hardcoded paths &amp; names:</strong> the Mongo URI (<code>mongodb://localhost</code>), db/collection (<code>grid</code>/<code>points</code>), and the source CSV (<code>speedcam_map.csv</code>) are baked in — adjust for your setup.</li>
+          <li><strong>Marker properties</strong> (<code>marker-color</code>, <code>marker-symbol</code>) are geojson.io's simplestyle conventions, so they render automatically there.</li>
+        </ul>
+
+        <h2 id="layout"><span class="num">11</span>Repo layout</h2>
+        <table>
+          <thead><tr><th>File</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td><code>uploadtoMongo.py</code></td><td>Load CSV points into <code>grid.points</code> as GeoJSON documents</td></tr>
+            <tr><td><code>getPointsInGrid.py</code></td><td>Query points inside a polygon built from a <code>lat, lon</code> corner CSV</td></tr>
+            <tr><td><code>getPointsInPolygon.py</code></td><td>Query points inside a polygon supplied as a GeoJSON file (faster setup)</td></tr>
+            <tr><td><code>coord.in</code></td><td>Example corner list (a rectangle over Singapore)</td></tr>
+            <tr><td><code>grid.geojson</code></td><td>Example <code>FeatureCollection</code> output of points</td></tr>
+            <tr><td><code>docs/index.html</code></td><td>Source for this documentation site</td></tr>
+            <tr><td><code>.github/workflows/deploy-pages.yml</code></td><td>GitHub Actions workflow that publishes <code>docs/</code> to GitHub Pages</td></tr>
+          </tbody>
+        </table>
+        <div class="callout">Questions or improvements? Open an issue or PR at <a href="https://github.com/ruffyleaf/pygeowithin">github.com/ruffyleaf/pygeowithin</a>.</div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p><code>pygeowithin</code> guide — built from <a href="https://github.com/ruffyleaf/pygeowithin">ruffyleaf/pygeowithin</a>. Published with GitHub Pages.</p>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText).then(function(){
+        btn.textContent='Copied'; btn.classList.add('done');
+        setTimeout(function(){btn.textContent='Copy';btn.classList.remove('done');},1600);
+      });
+    });
+  });
+  var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+  var map = {}; links.forEach(function(l){ map[l.getAttribute('href').slice(1)] = l; });
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main h2[id]'));
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        links.forEach(function(l){l.classList.remove('active');});
+        var a = map[e.target.id]; if(a) a.classList.add('active');
+      }
+    });
+  },{rootMargin:'-80px 0px -70% 0px',threshold:0});
+  sections.forEach(function(s){obs.observe(s);});
+</script>
+</body>
+</html>
